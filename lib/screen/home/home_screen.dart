@@ -15,7 +15,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   TextEditingController controller = TextEditingController();
-  static const String _apiKey = 'YOUR_GEMINI_API_KEY';
+  static const String _apiKey = 'your api-keys';
   bool _isLoading = false;
   final List<Map<String, dynamic>> _messages = [];
   Future<void> _sendMessage() async{
@@ -45,42 +45,69 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<String> _fetchResponse(String prompt) async {
+    const maxRetries = 2;
     final uri = Uri.parse(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
     );
 
-    final response = await http.post(
-      uri,
-      headers: {
-        'Content-Type':'application/json',
-        'X-goog-api-key' : _apiKey
-      },
-      body: jsonEncode({
-        'contents': [
-          {
-            'parts': [
-              {'text':prompt}
+    try {
+      for (int attempt = 0; attempt <= maxRetries; attempt++) {
+        final response = await http.post(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+            'X-goog-api-key': _apiKey,
+          },
+          body: jsonEncode({
+            'contents': [
+              {
+                'parts': [
+                  {'text': prompt}
+                ]
+              }
             ]
+          }),
+        );
+
+        debugPrint('ATTEMPT ${attempt + 1} -> STATUS CODE: ${response.statusCode}');
+
+        if (response.statusCode == 200) {
+          final decode = jsonDecode(response.body) as Map<String, dynamic>;
+          final candidates = decode['candidates'] as List<dynamic>?;
+          if (candidates != null && candidates.isNotEmpty) {
+            final part = candidates[0]['content']['parts'] as List<dynamic>?;
+            if (part != null && part.isNotEmpty) {
+              final text = part[0]['text'] as String?;
+              if (text != null && text.trim().isNotEmpty) {
+                return text.trim();
+              }
+            }
           }
-        ]
-      })
-    );
-    debugPrint('STATUS CODE: ${response.statusCode}');
-    debugPrint('RESPONSE BODY: ${response.body}');
-    if(response.statusCode == 200){
-      final decode = jsonDecode(response.body) as Map<String,dynamic>;
-      final candidates = decode['candidates'] as List<dynamic>?;
-      if(candidates != null && candidates.isNotEmpty){
-        final part = candidates[0]['content']['parts'] as List<dynamic>?;
-        if(part != null && part.isNotEmpty){
-          final text = part[0]['text'] as String;
-          if (text.trim().isNotEmpty){
-            return text.trim();
-          }
+          return 'No Response Received';
         }
+
+        if (response.statusCode == 503 && attempt < maxRetries) {
+          await Future.delayed(Duration(seconds: (attempt + 1) * 2));
+          continue;
+        }
+
+        debugPrint('Response Body: ${response.body}');
+
+        if (response.statusCode == 503) {
+          return 'Server is currently busy (503). Please try again in a moment.';
+        }
+        if (response.statusCode == 429) {
+          return 'Too many requests (429). Please wait a bit and try again.';
+        }
+
+        return 'Request failed (${response.statusCode}). Please try again.';
       }
+    } catch (e) {
+      debugPrint('FETCH ERROR: $e');
+      return 'Network error. Please check your connection and try again.';
     }
-    return 'Server busy (${response.statusCode}): Please try again.';
+
+    return 'Server is currently busy (503). Please try again in a moment.';
   }
 
 
