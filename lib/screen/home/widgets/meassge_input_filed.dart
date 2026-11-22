@@ -1,8 +1,17 @@
 import 'package:flutter/material.dart';
 
 class MessageInputField extends StatelessWidget {
-  const new({
+  final TextEditingController controller;
+  final VoidCallback? onSendPressed;
+  final VoidCallback? onAttachPressed;
+  final bool isLoading;
+
+  const MessageInputField({
     super.key,
+    required this.controller,
+    this.onSendPressed,
+    this.onAttachPressed,
+    this.isLoading = false,
   });
 
   @override
@@ -16,7 +25,7 @@ class MessageInputField extends StatelessWidget {
       child: Row(
         children: [
           IconButton(
-            onPressed: () {},
+            onPressed: onAttachPressed,
             icon: Icon(
               Icons.attach_file,
               size: 30,
@@ -25,6 +34,7 @@ class MessageInputField extends StatelessWidget {
           ),
           Expanded(
             child: TextField(
+              controller: controller,
               decoration: InputDecoration(
                 border: InputBorder.none,
                 labelText: 'Ask to WordFlow',
@@ -33,7 +43,9 @@ class MessageInputField extends StatelessWidget {
               maxLines: 5,
             ),
           ),
-          IconButton.filled(onPressed: (){},padding: EdgeInsets.all(10), icon: Icon(Icons.send,size: 30,))
+          IconButton.filled(onPressed: onSendPressed,style: IconButton.styleFrom(
+            backgroundColor: isLoading ? Colors.grey : Colors.deepPurple
+          ),padding: EdgeInsets.all(10), icon: Icon(Icons.send,size: 30,))
         ],
       ),
     );

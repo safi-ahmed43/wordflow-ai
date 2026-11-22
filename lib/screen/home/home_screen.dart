@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:response_ai/screen/home/widgets/chat_bubble.dart';
+import 'package:response_ai/screen/home/widgets/empty_placeholder.dart';
 import 'package:response_ai/screen/home/widgets/meassge_input_filed.dart';
+import 'package:http/http.dart' as http;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,17 +14,82 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final List _messages = [
-    {
-      'text': 'Hello! What content would you like me to generate today?',
-      'isUser': false,
-    },
-    {'text': 'Write a short caption for a coding project.', 'isUser': true},
-    {
-      'text': 'Turning ideas into clean code, one widget at a time. 🚀',
-      'isUser': false,
-    },
-  ];
+  TextEditingController controller = TextEditingController();
+  static const String _apiKey = 'YOUR_GEMINI_API_KEY';
+  bool _isLoading = false;
+  final List<Map<String, dynamic>> _messages = [];
+  Future<void> _sendMessage() async{
+    final text = controller.text.trim();
+    if(text.isEmpty || _isLoading) return;
+
+    setState(() {
+      _messages.add({
+        'text':text,
+        'isUser':true
+      });
+      _isLoading = true;
+      controller.clear();
+    });
+
+    final reply = await _fetchResponse(text);
+    if(!mounted) return;
+
+    setState(() {
+      _messages.add({
+        'text': reply,
+        'isUser':false
+      });
+      _isLoading=false;
+    });
+
+  }
+
+  Future<String> _fetchResponse(String prompt) async {
+    final uri = Uri.parse(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent',
+    );
+
+    final response = await http.post(
+      uri,
+      headers: {
+        'Content-Type':'application/json',
+        'X-goog-api-key' : _apiKey
+      },
+      body: jsonEncode({
+        'contents': [
+          {
+            'parts': [
+              {'text':prompt}
+            ]
+          }
+        ]
+      })
+    );
+    debugPrint('STATUS CODE: ${response.statusCode}');
+    debugPrint('RESPONSE BODY: ${response.body}');
+    if(response.statusCode == 200){
+      final decode = jsonDecode(response.body) as Map<String,dynamic>;
+      final candidates = decode['candidates'] as List<dynamic>?;
+      if(candidates != null && candidates.isNotEmpty){
+        final part = candidates[0]['content']['parts'] as List<dynamic>?;
+        if(part != null && part.isNotEmpty){
+          final text = part[0]['text'] as String;
+          if (text.trim().isNotEmpty){
+            return text.trim();
+          }
+        }
+      }
+    }
+    return 'Server busy (${response.statusCode}): Please try again.';
+  }
+
+
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -42,7 +110,11 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       body: Column(
         children: [
+          if(_messages.isEmpty)...[
+            EmptyPlaceholder(),
+          ]
           // Chat Bubble
+          else
           Expanded(
             child: ListView.builder(
               itemCount: _messages.length,
@@ -59,8 +131,24 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
           ),
+          // Loading Progress Indicator
+          if(_isLoading)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                spacing: 10,
+                children: [
+                  SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(),
+                  ),
+                  Text('Word Flow is thinking.....')
+                ],
+              ),
+            ),
           // Message Input Filed
-          MessageInputField(),
+          MessageInputField(controller: controller,onSendPressed: _sendMessage,isLoading: _isLoading,),
         ],
       ),
     );
